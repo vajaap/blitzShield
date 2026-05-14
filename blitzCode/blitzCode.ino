@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <U8g2lib.h>
 #include <LiquidCrystal_I2C.h>
+#include <EasyButton.h>
 
 //-------------------------------------
 
@@ -85,15 +86,111 @@ void bmsTask(void * parameter) {
 //---------------------------------------------------
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 U8G2_ST7567_ENH_DG128064I_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+int runningLED;
 
 // The array containing your 4 temperature values
 int tempLED[4] = {22, 25, 30, 18}; 
-   int lm1000;
-  int lm500;
+int lm1000;
+int lm500;
+int preset;
+int presetValue;
+int pinLED[6] = {32,33,25,26,27,14};
 
 
+void switchLed2(int pattern)
+{
+  if(pattern == 0){
+    digitalWrite(pinLED[0],HIGH);
+    digitalWrite(pinLED[1],LOW);
+    digitalWrite(pinLED[2],LOW);
+    digitalWrite(pinLED[3],HIGH);
+    digitalWrite(pinLED[4],LOW);
+    digitalWrite(pinLED[5],LOW);
+  }  
+  else if(pattern == 1){
+    digitalWrite(pinLED[0],LOW);
+    digitalWrite(pinLED[1],HIGH);
+    digitalWrite(pinLED[2],LOW);
+    digitalWrite(pinLED[3],LOW);
+    digitalWrite(pinLED[4],HIGH);
+    digitalWrite(pinLED[5],LOW);
+  }
+  else if(pattern == 2){
+    digitalWrite(pinLED[0],LOW);
+    digitalWrite(pinLED[1],LOW);
+    digitalWrite(pinLED[2],HIGH);
+    digitalWrite(pinLED[3],LOW);
+    digitalWrite(pinLED[4],LOW);
+    digitalWrite(pinLED[5],HIGH);
+  }
+  
+  return;
+}
+void switchLed4(int pattern)
+{
+  if(pattern == 0){
+    digitalWrite(pinLED[0],HIGH);
+    digitalWrite(pinLED[1],HIGH);
+    digitalWrite(pinLED[2],LOW);
+    digitalWrite(pinLED[3],HIGH);
+    digitalWrite(pinLED[4],HIGH);
+    digitalWrite(pinLED[5],LOW);
+  }  
+  else if(pattern == 1){
+    digitalWrite(pinLED[0],LOW);
+    digitalWrite(pinLED[1],HIGH);
+    digitalWrite(pinLED[2],HIGH);
+    digitalWrite(pinLED[3],LOW);
+    digitalWrite(pinLED[4],HIGH);
+    digitalWrite(pinLED[5],HIGH);
+  }
+  else if(pattern == 2){
+    digitalWrite(pinLED[0],HIGH);
+    digitalWrite(pinLED[1],LOW);
+    digitalWrite(pinLED[2],HIGH);
+    digitalWrite(pinLED[3],HIGH);
+    digitalWrite(pinLED[4],LOW);
+    digitalWrite(pinLED[5],HIGH);
+  }
+  
+  return;
+}
+void switchLed6()
+{
+    digitalWrite(pinLED[0],HIGH);
+    digitalWrite(pinLED[1],HIGH);
+    digitalWrite(pinLED[2],HIGH);
+    digitalWrite(pinLED[3],HIGH);
+    digitalWrite(pinLED[4],HIGH);
+    digitalWrite(pinLED[5],HIGH);
+    return;
+}
+void switchLedOff()
+{
+    digitalWrite(pinLED[0],LOW);
+    digitalWrite(pinLED[1],LOW);
+    digitalWrite(pinLED[2],LOW);
+    digitalWrite(pinLED[3],LOW);
+    digitalWrite(pinLED[4],LOW);
+    digitalWrite(pinLED[5],LOW);
+    return;
+}
+
+const int BUTTON_PIN = 12;
+
+EasyButton button(BUTTON_PIN);
+void onPressed() {
+  Serial.println("Gumb: STISNJEN");
+}
+void onReleased() {
+  Serial.println("Gumb: PUSTEN");
+}
+void IRAM_ATTR buttonISR() {
+  button.read();
+}
 
 void setup() {
+  
   
   DalySerial.begin(9600, SERIAL_8N1, 16, 17);
 
@@ -121,10 +218,49 @@ void setup() {
   u8g2.begin();
   u8g2.setContrast(225); 
 
+  pinMode(4,INPUT);
   Serial.begin(115200);
+
+
+  button.begin();
+  button.onPressed(onPressed);
+  button.onPressedFor(0,onReleased);
+  button.enableInterrupt(buttonISR);
 }
 
 void loop() {
+  presetValue=analogRead(4);
+
+  if(max(max(tempLED[0],tempLED[1]),max(tempLED[2],tempLED[3]))>60)
+  {
+    switchLedOff();
+    runningLED=false;
+  }
+
+  if(presetValue<50){
+    preset=1;//ConstantLOW
+  }
+  else if(presetValue<715){
+    preset=2;//ConstantMedium
+  }
+  else if(presetValue<1381){
+    preset=3;//ConstantHigh
+  }
+  else if(presetValue<2047){
+    preset=4;//1sBursLow
+  }
+  else if(presetValue<2713){
+    preset=5;//1sBurstHigh
+  }
+  else if(presetValue<3379){
+    preset=6;//stroboLow
+  }
+  else if(presetValue<4040){
+    preset=7;//stroboMedium
+  }
+  else{
+    preset=8;//stroboHigh
+  }
 
   if(lm1000!=millis()/1000)
   {
@@ -148,4 +284,7 @@ void loop() {
     u8g2.print(tempLED[3]);
     u8g2.sendBuffer();
   }
+
+
+
 }
