@@ -3,6 +3,8 @@
 #include <U8g2lib.h>
 #include <LiquidCrystal_I2C.h>
 #include <EasyButton.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 //-------------------------------------
 
@@ -85,51 +87,61 @@ void bmsTask(void * parameter) {
 }
 //---------------------------------------------------
 LiquidCrystal_I2C lcd(0x27, 20, 4);
-U8G2_ST7567_ENH_DG128064I_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+U8G2_ST7567_ENH_DG128064I_F_HW_I2C u8g2(U8G2_R2, /* reset=*/ U8X8_PIN_NONE);
 int runningLED;
 
 // The array containing your 4 temperature values
-int tempLED[4] = {22, 25, 30, 18}; 
+int tempLED[4] = {11, 22, 33, 44}; 
 int lm1000;
 int lm500;
 int preset;
 int presetValue;
 int pinLED[6] = {32,33,25,26,27,14};
+bool pressed;
+int pat;
+int started;
+bool st;
+String presetText;
+int curPattern;
 
+#define ONE_WIRE_BUS 4
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+String temp;
 
-void switchLed2(int pattern)
-{
-  if(pattern == 0){
-    digitalWrite(pinLED[0],HIGH);
-    digitalWrite(pinLED[1],LOW);
-    digitalWrite(pinLED[2],LOW);
-    digitalWrite(pinLED[3],HIGH);
-    digitalWrite(pinLED[4],LOW);
-    digitalWrite(pinLED[5],LOW);
-  }  
-  else if(pattern == 1){
-    digitalWrite(pinLED[0],LOW);
-    digitalWrite(pinLED[1],HIGH);
-    digitalWrite(pinLED[2],LOW);
-    digitalWrite(pinLED[3],LOW);
-    digitalWrite(pinLED[4],HIGH);
-    digitalWrite(pinLED[5],LOW);
-  }
-  else if(pattern == 2){
-    digitalWrite(pinLED[0],LOW);
-    digitalWrite(pinLED[1],LOW);
-    digitalWrite(pinLED[2],HIGH);
-    digitalWrite(pinLED[3],LOW);
-    digitalWrite(pinLED[4],LOW);
-    digitalWrite(pinLED[5],HIGH);
-  }
-  
-  return;
-}
 void switchLed4(int pattern)
 {
   if(pattern == 0){
     digitalWrite(pinLED[0],HIGH);
+    digitalWrite(pinLED[1],LOW);
+    digitalWrite(pinLED[2],LOW);
+    digitalWrite(pinLED[3],HIGH);
+    digitalWrite(pinLED[4],LOW);
+    digitalWrite(pinLED[5],LOW);
+  }  
+  else if(pattern == 1){
+    digitalWrite(pinLED[0],LOW);
+    digitalWrite(pinLED[1],HIGH);
+    digitalWrite(pinLED[2],LOW);
+    digitalWrite(pinLED[3],LOW);
+    digitalWrite(pinLED[4],HIGH);
+    digitalWrite(pinLED[5],LOW);
+  }
+  else if(pattern == 2){
+    digitalWrite(pinLED[0],LOW);
+    digitalWrite(pinLED[1],LOW);
+    digitalWrite(pinLED[2],HIGH);
+    digitalWrite(pinLED[3],LOW);
+    digitalWrite(pinLED[4],LOW);
+    digitalWrite(pinLED[5],HIGH);
+  }
+  
+  return;
+}
+void switchLed2(int pattern)
+{
+  if(pattern == 0){
+    digitalWrite(pinLED[0],HIGH);
     digitalWrite(pinLED[1],HIGH);
     digitalWrite(pinLED[2],LOW);
     digitalWrite(pinLED[3],HIGH);
@@ -155,7 +167,7 @@ void switchLed4(int pattern)
   
   return;
 }
-void switchLed6()
+void switchLed0()
 {
     digitalWrite(pinLED[0],HIGH);
     digitalWrite(pinLED[1],HIGH);
@@ -165,7 +177,7 @@ void switchLed6()
     digitalWrite(pinLED[5],HIGH);
     return;
 }
-void switchLedOff()
+void switchLed6()
 {
     digitalWrite(pinLED[0],LOW);
     digitalWrite(pinLED[1],LOW);
@@ -176,21 +188,12 @@ void switchLedOff()
     return;
 }
 
-const int BUTTON_PIN = 12;
+const int BUTTON_PIN = 34;
 
 EasyButton button(BUTTON_PIN);
-void onPressed() {
-  Serial.println("Gumb: STISNJEN");
-}
-void onReleased() {
-  Serial.println("Gumb: PUSTEN");
-}
-void IRAM_ATTR buttonISR() {
-  button.read();
-}
+
 
 void setup() {
-  
   
   DalySerial.begin(9600, SERIAL_8N1, 16, 17);
 
@@ -218,59 +221,147 @@ void setup() {
   u8g2.begin();
   u8g2.setContrast(225); 
 
-  pinMode(4,INPUT);
-  Serial.begin(115200);
+  pinMode(35,INPUT);
+  pinMode(34,INPUT);
+  pinMode(pinLED[0],OUTPUT);
+  pinMode(pinLED[1],OUTPUT);
+  pinMode(pinLED[2],OUTPUT);
+  pinMode(pinLED[3],OUTPUT);
+  pinMode(pinLED[4],OUTPUT);
+  pinMode(pinLED[5],OUTPUT);
+  
 
 
   button.begin();
-  button.onPressed(onPressed);
-  button.onPressedFor(0,onReleased);
-  button.enableInterrupt(buttonISR);
+
+  switchLed6();
+
+
+    sensors.begin();
+  int deviceCount = sensors.getDeviceCount();
 }
 
 void loop() {
-  presetValue=analogRead(4);
+  button.read();
+  if(button.wasPressed()) {
+    pressed=true;
+  }
 
-  if(max(max(tempLED[0],tempLED[1]),max(tempLED[2],tempLED[3]))>60)
+  if(button.wasReleased()) {
+    
+    pressed=false;
+    curPattern = (curPattern+1)%3;
+  }
+
+
+  presetValue=analogRead(35);
+
+  if(max(max(tempLED[0],tempLED[1]),max(tempLED[2],tempLED[3]))>65)
   {
-    switchLedOff();
-    runningLED=false;
+    switchLed0();
+  }
+  else
+  {
+
+      if(presetValue<50){
+        preset=1;//off
+        presetText="0:OFF";
+        switchLed0();
+      }
+      else if(presetValue<715){
+        preset=2;//ConstantLOW
+        presetText="1:CONSTANT L";
+        if(pressed){
+          switchLed2(curPattern%3);
+        }
+        else
+        {
+          switchLed0();
+        }
+      }
+      else if(presetValue<1381){
+        preset=3;//ConstantMID  
+        presetText="2:CONSTANT M";
+        if(pressed){
+          switchLed4(curPattern%3);
+        }
+        else
+        {
+        switchLed0();
+        }
+      }
+      else if(presetValue<2047){
+        preset=4;//ContantHIGH
+        presetText="3:CONSTANT H";
+        if(pressed){
+          switchLed6();
+        }
+        else
+        {
+        switchLed0();
+        }
+      }
+      else if(presetValue<2713){
+        preset=5;//1sBurstHigh
+      }
+      else if(presetValue<3379){
+        preset=6;//stroboLow
+        if(pressed && (millis()/200)%2==0){
+          switchLed2(2);
+        }
+        else
+        {
+        switchLed0();
+        }
+      }
+      else if(presetValue<4040){
+        preset=7;//stroboMedium
+            if(pressed && (millis()/200)%2==0){
+          switchLed4(2);
+        }
+        else
+        {
+        switchLed0();
+        }
+      }
+      else{
+        preset=8;//stroboHigh
+            if(pressed && (millis()/200)%2==0){
+          switchLed6();
+        }                          
+        else
+        {
+        switchLed0();
+        }
+      }
   }
 
-  if(presetValue<50){
-    preset=1;//ConstantLOW
-  }
-  else if(presetValue<715){
-    preset=2;//ConstantMedium
-  }
-  else if(presetValue<1381){
-    preset=3;//ConstantHigh
-  }
-  else if(presetValue<2047){
-    preset=4;//1sBursLow
-  }
-  else if(presetValue<2713){
-    preset=5;//1sBurstHigh
-  }
-  else if(presetValue<3379){
-    preset=6;//stroboLow
-  }
-  else if(presetValue<4040){
-    preset=7;//stroboMedium
-  }
-  else{
-    preset=8;//stroboHigh
-  }
 
   if(lm1000!=millis()/1000)
   {
-    lm1000=millis()/1000;
-    lcd.setCursor(0, 1);
-    lcd.print("Voltage:" + String(voltageBMS)+" V");
-    lcd.setCursor(0, 2);
-    lcd.print("Current:" + String(currentBMS)+" A");
-    lcd.setCursor(0, 3);
-    lcd.print("Temprature:" + String(tempBMS)+" C");
+        lm1000 = millis()/1000;
+
+    lcd.setCursor(0,0);
+    lcd.print("MODE ");
+    lcd.print();
+    
+    
+
+    lcd.setCursor(0,1);
+    lcd.print("Voltage:");
+    lcd.print(voltageBMS);
+    lcd.print(" V    ");
+
+    lcd.setCursor(0,2);
+    lcd.print("Current:");
+    lcd.print(currentBMS);
+    lcd.print(" A    ");
+
+    lcd.setCursor(0,3);
+    lcd.print("Temp:");
+    lcd.print(tempBMS);
+    lcd.print((char)223); 
+    lcd.print("C    ");
   
     u8g2.clearBuffer();
     u8g2.setFont(u8g2_font_fub30_tn   );
@@ -285,6 +376,15 @@ void loop() {
     u8g2.sendBuffer();
   }
 
-
+ if(lm500!=millis()/500)
+  {  
+  
+    lm500=millis()/500;
+  sensors.requestTemperatures(); 
+  for (int i = 0; i < sensors.getDeviceCount(); i++) {
+    tempLED[i] = sensors.getTempCByIndex(i);
+    
+  }
+  }
 
 }
